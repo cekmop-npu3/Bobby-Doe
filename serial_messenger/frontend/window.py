@@ -279,7 +279,8 @@ class SerialMessenger(QtWidgets.QWidget):
             QFrame#section { background: white; border: 1px solid #d9e1f0; border-radius: 14px; }
             QLabel#sectionTitle { color: #263a84; font-size: 15px; font-weight: 700; }
             QLabel#stateLabel { color: #40506d; line-height: 1.4; }
-            QComboBox, QPlainTextEdit { background: #f9fbff; border: 1px solid #cbd6eb; border-radius: 8px; padding: 8px; }
+            QComboBox { background: #f9fbff; border: 1px solid #cbd6eb; border-radius: 8px; padding: 8px; }
+            QPlainTextEdit { background: transparent; border: 1px solid #cbd6eb; border-radius: 8px; padding: 8px; }
             QComboBox { min-height: 22px; } QComboBox:hover, QPlainTextEdit:focus { border-color: #5271d7; }
             QComboBox:disabled { background: #edf1f7; color: #71809c; }
             QPlainTextEdit { selection-background-color: #9db5ff; }
