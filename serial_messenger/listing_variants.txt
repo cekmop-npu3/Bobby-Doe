@@ -1,0 +1,65 @@
+Серков Игорь Максимович
+=======================
+BAUD_RATE: Final[int] = 9600
+BYTE_SIZE: Final[int] = 8
+PARITY: Final[str] = "N"
+STOP_BIT_VALUES = [1, 1.5, 2]
+
+def __enter__(self):
+    """Open the configured serial port.
+
+    :return: Connected controller.
+    """
+    self.port = serial.Serial(
+        port=port_name, baudrate=BAUD_RATE,
+        bytesize=BYTE_SIZE, parity=PARITY,
+        stopbits=stop_bits, timeout=0.05,
+        write_timeout=1,
+    )
+
+Басюк Алеся Владимировна
+========================
+layout.addWidget(control, 1, 0)
+layout.addWidget(state, 1, 1)
+layout.addWidget(outgoing, 2, 0)
+layout.addWidget(incoming, 2, 1)
+
+form.addRow("COM port", self.port_choice)
+form.addRow("Stop bits", self.stop_bits_choice)
+
+Ефимик Максим Сергеевич
+=======================
+LOG_FORMAT: Final[str] = "%(asctime)s | %(levelname)-8s | %(name)s | %(message)s"
+
+def configure_logging():
+    """Configure console logging for the application.
+
+    :return: ``None``.
+    """
+    logging.basicConfig(level=logging.INFO, format=LOG_FORMAT)
+
+LOGGER = logging.getLogger(__name__)
+LOGGER.info("Serial port %s is open.", self.port_name)
+LOGGER.error("User-visible serial error: %s", message)
+
+Ковалевский Ярослав Николаевич
+==============================
+@patch("backend.serial_port.Serial")
+def test_context_manager_opens_and_closes_port(self, serial_class):
+    """Verify resource cleanup without a real COM port.
+
+    :param serial_class: Mocked pyserial constructor.
+    :return: ``None``.
+    """
+    port = MagicMock(is_open=True)
+    serial_class.return_value = port
+    with SerialConnection("COM10", 1.5) as connection:
+        self.assertIsNotNone(connection.receiver)
+    port.close.assert_called_once()
+
+def test_send_character_writes_utf8_bytes(self):
+    """Verify UTF-8 byte transmission with a fake serial port.
+
+    :return: ``None``.
+    """
+    self.assertTrue(connection.send_character("Я"))
