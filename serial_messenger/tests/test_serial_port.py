@@ -84,7 +84,9 @@ class SerialConnectionTests(unittest.TestCase):
 
     @patch("backend.serial_port.ReceiverThread", FakeReceiver)
     @patch("backend.serial_port.Serial")
-    def test_context_manager_opens_and_closes_port(self, serial_class: MagicMock) -> None:
+    def test_context_manager_opens_and_closes_port(
+        self, serial_class: MagicMock
+    ) -> None:
         """Ensure context entry opens the port and exit releases resources.
 
         :param serial_class: Mocked pyserial constructor supplied by unittest.
@@ -123,8 +125,10 @@ class SerialConnectionTests(unittest.TestCase):
         :return: ``None``.
         """
         port = MagicMock(is_open=True)
+        port.write.return_value = len("Я".encode("utf-8"))
         connection = SerialConnection("COM10", 9600)
         connection.port = port
+        connection._handle_control_frame("ACK:9600")
 
         self.assertTrue(connection.send_character("Я"))
         port.write.assert_called_once_with("Я".encode("utf-8"))
