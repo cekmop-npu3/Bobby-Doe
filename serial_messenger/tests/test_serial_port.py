@@ -129,6 +129,22 @@ class SerialConnectionTests(unittest.TestCase):
         self.assertTrue(connection.send_character("Я"))
         port.write.assert_called_once_with("Я".encode("utf-8"))
 
+    def test_mismatched_baud_rate_emits_error(self) -> None:
+        """Ensure a peer that announces another baud rate is rejected.
+
+        :return: ``None``.
+        """
+        errors: list[str] = []
+        connection = SerialConnection("COM10", 9600)
+        connection.error.connect(errors.append)
+
+        connection._handle_control_frame("HELLO:115200")
+
+        self.assertEqual(
+            errors,
+            ["Baud rate mismatch: local 9600, remote 115200."],
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

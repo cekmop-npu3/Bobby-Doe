@@ -27,6 +27,10 @@ STOP_BITS: Final[int] = 1
 TIMEOUT_SECONDS: Final[float] = 0.05
 WRITE_TIMEOUT_SECONDS: Final[int] = 1
 RECEIVE_POLL_INTERVAL_MS: Final[int] = 20
+CONTROL_FRAME_START: Final[str] = "\x1eSM1:"
+CONTROL_FRAME_END: Final[str] = "\x1f"
+CONTROL_HELLO: Final[str] = "HELLO"
+CONTROL_ACK: Final[str] = "ACK"
 
 # Variant 1 selection: deliberately mutable and therefore not Final.
 BAUD_RATES: list[int] = [110, 300, 600, 1200, 2400, 4800, 9600, 19200, 38400, 57600, 115200]
@@ -93,6 +97,7 @@ class SerialConnection(QtCore.QObject):
 
     received = QtCore.pyqtSignal(str)
     error = QtCore.pyqtSignal(str)
+    baud_rate_verified = QtCore.pyqtSignal()
 
     def __init__(self, port_name: str, baud_rate: int) -> None:
         """Store a selected port and baud rate without opening it.
@@ -105,6 +110,8 @@ class SerialConnection(QtCore.QObject):
         self.baud_rate = baud_rate
         self.port: Serial | None = None
         self.receiver: ReceiverThread | None = None
+        self._control_buffer = ""
+        self._baud_rate_confirmed = False
 
     @staticmethod
     def available_ports() -> Generator[str, None, None]:
@@ -138,11 +145,125 @@ class SerialConnection(QtCore.QObject):
             raise ConnectionError(f"Could not open {self.port_name}: {error}") from error
 
         self.receiver = ReceiverThread(self.port)
-        self.receiver.data_received.connect(self.received)
+        self.receiver.data_received.connect(self._handle_received_text)
         self.receiver.error_occurred.connect(self.error)
         self.receiver.start()
         LOGGER.info("Serial port %s is open.", self.port_name)
         return self
+
+    def start_baud_rate_check(self) -> None:
+        """Send the initial control frame used to confirm remote baud rate.
+
+        :return: ``None``.
+        """
+        self._write_control_frame(f"{CONTROL_HELLO}:{self.baud_rate}")
+
+    def _handle_received_text(self, text: str) -> None:
+        """Separate control frames from user text received from the port.
+
+        :param text: Newly decoded text emitted by the receiving thread.
+        :return: ``None``.
+        """
+        self._control_buffer += text
+        while self._control_buffer:
+            frame_start = self._control_buffer.find(CONTROL_FRAME_START)
+            if frame_start == -1:
+                prefix_length = min(
+                    len(self._control_buffer),
+                    len(CONTROL_FRAME_START) - 1,
+                )
+                while prefix_length and not CONTROL_FRAME_START.startswith(
+                    self._control_buffer[-prefix_length:]
+                ):
+                    prefix_length -= 1
+
+                user_text = self._control_buffer[:-prefix_length] if prefix_length else self._control_buffer
+                if user_text:
+                    self.received.emit(user_text)
+                self._control_buffer = self._control_buffer[-prefix_length:] if prefix_length else ""
+                return
+
+            if frame_start:
+                self.received.emit(self._control_buffer[:frame_start])
+                self._control_buffer = self._control_buffer[frame_start:]
+
+            frame_end = self._control_buffer.find(
+                CONTROL_FRAME_END,
+                len(CONTROL_FRAME_START),
+            )
+            if frame_end == -1:
+                return
+
+            frame = self._control_buffer[
+                len(CONTROL_FRAME_START):frame_end
+            ]
+            self._control_buffer = self._control_buffer[frame_end + 1:]
+            self._handle_control_frame(frame)
+
+    def _handle_control_frame(self, frame: str) -> None:
+        """Validate and react to one received control frame.
+
+        :param frame: Frame payload without the protocol delimiters.
+        :return: ``None``.
+        """
+        command, separator, baud_rate_text = frame.partition(":")
+        if not separator:
+            self.error.emit("Received an invalid baud-rate verification frame.")
+            return
+
+        try:
+            remote_baud_rate = int(baud_rate_text)
+        except ValueError:
+            self.error.emit("Received an invalid remote baud-rate value.")
+            return
+
+        if remote_baud_rate != self.baud_rate:
+            self.error.emit(
+                "Baud rate mismatch: "
+                f"local {self.baud_rate}, remote {remote_baud_rate}."
+            )
+            return
+
+        if command == CONTROL_HELLO:
+            self._write_control_frame(f"{CONTROL_ACK}:{self.baud_rate}")
+            self._confirm_baud_rate()
+        elif command == CONTROL_ACK:
+            self._confirm_baud_rate()
+        else:
+            self.error.emit("Received an unknown baud-rate verification frame.")
+
+    def _confirm_baud_rate(self) -> None:
+        """Emit successful verification only once for this connection.
+
+        :return: ``None``.
+        """
+        if self._baud_rate_confirmed:
+            return
+
+        self._baud_rate_confirmed = True
+        LOGGER.info(
+            "Baud rate %s verified on %s.",
+            self.baud_rate,
+            self.port_name,
+        )
+        self.baud_rate_verified.emit()
+
+    def _write_control_frame(self, payload: str) -> None:
+        """Write a non-user control frame one character at a time.
+
+        :param payload: Control-frame payload without delimiters.
+        :return: ``None``.
+        """
+        if self.port is None or not self.port.is_open:
+            self.error.emit("COM port is not open.")
+            return
+        try:
+            frame = f"{CONTROL_FRAME_START}{payload}{CONTROL_FRAME_END}"
+            for character in frame:
+                self.port.write(character.encode("utf-8"))
+        except (OSError, SerialException, UnicodeEncodeError, ValueError) as error:
+            LOGGER.error("Could not verify baud rate on %s: %s", self.port_name, error)
+            self.error.emit(f"Baud-rate verification error: {error}")
 
     def send_character(self, character: str) -> bool:
         """Write one user-entered character to the open port.

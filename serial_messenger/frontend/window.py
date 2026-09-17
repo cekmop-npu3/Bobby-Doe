@@ -69,6 +69,7 @@ class SerialMessenger(QtWidgets.QWidget):
         self.connection: SerialConnection | None = None
         self._connection_scope = ExitStack()
         self.sent_characters = 0
+        self.baud_rate_verified = False
         self.status_note = "Choose a COM port and baud rate."
 
         self.setWindowTitle("Serial Messenger")
@@ -84,6 +85,12 @@ class SerialMessenger(QtWidgets.QWidget):
         self.state_timer = QtCore.QTimer(self)
         self.state_timer.timeout.connect(self._refresh_state)
         self.state_timer.start(1000)
+
+        self.baud_check_timer = QtCore.QTimer(self)
+        self.baud_check_timer.setSingleShot(True)
+        self.baud_check_timer.timeout.connect(
+            self._baud_rate_check_timed_out
+        )
 
         self.input_area.setFocus()
 
@@ -257,6 +264,9 @@ class SerialMessenger(QtWidgets.QWidget):
 
         self.connection.received.connect(self._append_received)
         self.connection.error.connect(self._show_error)
+        self.connection.baud_rate_verified.connect(
+            self._baud_rate_verified
+        )
 
         LOGGER.info(
             "Connected frontend to serial port %s.",
@@ -264,6 +274,7 @@ class SerialMessenger(QtWidgets.QWidget):
         )
 
         self._port_opened(port_name)
+        self._start_baud_rate_check()
 
     def _port_opened(self, port_name: str) -> None:
         """Lock connection selectors after the port opens successfully.
@@ -274,10 +285,49 @@ class SerialMessenger(QtWidgets.QWidget):
         self.port_choice.setEnabled(False)
         self.baud_rate_choice.setEnabled(False)
 
-        self.status_note = f"Connected to {port_name}."
+        self.status_note = f"Connected to {port_name}. Checking baud rate..."
 
+        self.input_area.setEnabled(False)
+        self._refresh_state()
+
+    def _start_baud_rate_check(self) -> None:
+        """Start verification that the connected peer uses the selected speed.
+
+        :return: ``None``.
+        """
+        if self.connection is None:
+            return
+
+        self.baud_check_timer.start(2000)
+        self.connection.start_baud_rate_check()
+
+    def _baud_rate_verified(self) -> None:
+        """Enable input after the remote endpoint confirms the baud rate.
+
+        :return: ``None``.
+        """
+        if self.connection is None:
+            return
+
+        self.baud_check_timer.stop()
+        self.baud_rate_verified = True
+        self.input_area.setEnabled(True)
+        self.status_note = (
+            f"Connected at {self.connection.baud_rate} baud."
+        )
         self.input_area.setFocus()
         self._refresh_state()
+
+    def _baud_rate_check_timed_out(self) -> None:
+        """Report an error when no compatible peer confirms the speed.
+
+        :return: ``None``.
+        """
+        if not self.baud_rate_verified:
+            self._show_error(
+                "Baud-rate verification timed out. "
+                "Check the remote port and baud rate."
+            )
 
     def _send_character(self, character: str) -> None:
         """Send one entered character and update the sent-character count.
@@ -328,6 +378,7 @@ class SerialMessenger(QtWidgets.QWidget):
         :param message: Human-readable explanation of the error.
         :return: ``None``.
         """
+        self.baud_check_timer.stop()
         self.status_note = message
 
         LOGGER.error(
