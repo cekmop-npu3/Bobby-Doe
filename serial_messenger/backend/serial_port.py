@@ -15,21 +15,21 @@ from serial import Serial, SerialException
 from serial.tools import list_ports
 
 
-__all__ = ("STOP_BIT_VALUES", "SerialConnection")
+__all__ = ("BAUD_RATES", "SerialConnection")
 
 
 LOGGER = logging.getLogger(__name__)
 
 
-BAUD_RATE: Final[int] = 9600
 BYTE_SIZE: Final[int] = 8
 PARITY: Final[str] = "N"
+STOP_BITS: Final[int] = 1
 TIMEOUT_SECONDS: Final[float] = 0.05
 WRITE_TIMEOUT_SECONDS: Final[int] = 1
 RECEIVE_POLL_INTERVAL_MS: Final[int] = 20
 
-# Variant 3 selection: deliberately mutable and therefore not Final.
-STOP_BIT_VALUES: list[float] = [1, 1.5, 2]
+# Variant 1 selection: deliberately mutable and therefore not Final.
+BAUD_RATES: list[int] = [110, 300, 600, 1200, 2400, 4800, 9600, 19200, 38400, 57600, 115200]
 
 
 class ReceiverThread(QtCore.QThread):
@@ -62,6 +62,11 @@ class ReceiverThread(QtCore.QThread):
                 if waiting:
                     text = decoder.decode(self.port.read(waiting))
                     if text:
+                        if "\ufffd" in text:
+                            self.error_occurred.emit(
+                                "Received corrupted data. Check that both COM ports use the same baud rate."
+                            )
+                            return
                         self.data_received.emit(text)
                 else:
                     self.msleep(RECEIVE_POLL_INTERVAL_MS)
@@ -89,15 +94,15 @@ class SerialConnection(QtCore.QObject):
     received = QtCore.pyqtSignal(str)
     error = QtCore.pyqtSignal(str)
 
-    def __init__(self, port_name: str, stop_bits: float) -> None:
-        """Store a selected port and stop-bit setting without opening it.
+    def __init__(self, port_name: str, baud_rate: int) -> None:
+        """Store a selected port and baud rate without opening it.
 
         :param port_name: System COM-port name, such as ``COM10``.
-        :param stop_bits: User-selected number of stop bits.
+        :param baud_rate: User-selected transfer speed in baud.
         """
         super().__init__()
         self.port_name = port_name
-        self.stop_bits = stop_bits
+        self.baud_rate = baud_rate
         self.port: Serial | None = None
         self.receiver: ReceiverThread | None = None
 
@@ -117,13 +122,13 @@ class SerialConnection(QtCore.QObject):
         :raises ConnectionError: If the selected port cannot be opened.
         """
         try:
-            LOGGER.info("Opening serial port %s with %s stop bits.", self.port_name, self.stop_bits)
+            LOGGER.info("Opening serial port %s at %s baud.", self.port_name, self.baud_rate)
             self.port = Serial(
                 port=self.port_name,
-                baudrate=BAUD_RATE,
+                baudrate=self.baud_rate,
                 bytesize=BYTE_SIZE,
                 parity=PARITY,
-                stopbits=self.stop_bits,
+                stopbits=STOP_BITS,
                 timeout=TIMEOUT_SECONDS,
                 write_timeout=WRITE_TIMEOUT_SECONDS,
             )

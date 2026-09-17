@@ -1,4 +1,4 @@
-"""Graphical interface for the variant 3 COM messenger."""
+"""Graphical interface for the variant 1 COM messenger."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from typing import override
 
 from PyQt6 import QtCore, QtGui, QtWidgets
 
-from backend import STOP_BIT_VALUES, SerialConnection
+from backend import BAUD_RATES, SerialConnection
 
 
 __all__ = ("SerialMessenger",)
@@ -61,7 +61,7 @@ class SerialMessenger(QtWidgets.QWidget):
         self.connection: SerialConnection | None = None
         self._connection_scope = ExitStack()
         self.sent_characters = 0
-        self.status_note = "Choose a COM port and stop bits."
+        self.status_note = "Choose a COM port and baud rate."
 
         self.setWindowTitle("Serial Messenger")
         self.resize(880, 570)
@@ -83,10 +83,10 @@ class SerialMessenger(QtWidgets.QWidget):
         :return: ``None``.
         """
         self.port_choice = QtWidgets.QComboBox()
-        self.stop_bits_choice = QtWidgets.QComboBox()
-        for value in STOP_BIT_VALUES:
-            self.stop_bits_choice.addItem(str(value), value)
-        self.stop_bits_choice.setCurrentIndex(-1)
+        self.baud_rate_choice = QtWidgets.QComboBox()
+        for value in BAUD_RATES:
+            self.baud_rate_choice.addItem(str(value), value)
+        self.baud_rate_choice.setCurrentIndex(-1)
 
         self.input_area = ImmediateInput()
         self.output_area = QtWidgets.QPlainTextEdit()
@@ -107,7 +107,7 @@ class SerialMessenger(QtWidgets.QWidget):
 
         heading = QtWidgets.QLabel("SERIAL MESSENGER")
         heading.setObjectName("heading")
-        subtitle = QtWidgets.QLabel("Variant 3 · direct character transmission")
+        subtitle = QtWidgets.QLabel("Variant 1 · direct character transmission")
         subtitle.setObjectName("subtitle")
         title_box = QtWidgets.QVBoxLayout()
         title_box.setSpacing(1)
@@ -119,7 +119,7 @@ class SerialMessenger(QtWidgets.QWidget):
         form = QtWidgets.QFormLayout()
         form.setSpacing(10)
         form.addRow("COM port", self.port_choice)
-        form.addRow("Stop bits", self.stop_bits_choice)
+        form.addRow("Baud rate", self.baud_rate_choice)
         self._content_layout(control).addLayout(form)
 
         state = self._section("Activity")
@@ -173,7 +173,7 @@ class SerialMessenger(QtWidgets.QWidget):
         :return: ``None``.
         """
         self.port_choice.activated.connect(self._try_open)
-        self.stop_bits_choice.currentIndexChanged.connect(self._try_open)
+        self.baud_rate_choice.currentIndexChanged.connect(self._try_open)
         self.input_area.character_entered.connect(self._send_character)
 
     def _load_ports(self) -> None:
@@ -195,12 +195,12 @@ class SerialMessenger(QtWidgets.QWidget):
         if self.connection is not None:
             return
         port_name = self.port_choice.currentText().strip()
-        stop_bits = self.stop_bits_choice.currentData()
-        if not port_name or stop_bits is None:
+        baud_rate = self.baud_rate_choice.currentData()
+        if not port_name or baud_rate is None:
             return
         try:
             self.connection = self._connection_scope.enter_context(
-                SerialConnection(port_name, stop_bits)
+                SerialConnection(port_name, baud_rate)
             )
         except ConnectionError as error:
             LOGGER.warning("Connection attempt failed: %s", error)
@@ -219,7 +219,7 @@ class SerialMessenger(QtWidgets.QWidget):
         :return: ``None``.
         """
         self.port_choice.setEnabled(False)
-        self.stop_bits_choice.setEnabled(False)
+        self.baud_rate_choice.setEnabled(False)
         self.status_note = f"Connected to {port_name}."
         self.input_area.setFocus()
         self._refresh_state()
