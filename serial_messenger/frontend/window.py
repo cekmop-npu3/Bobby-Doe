@@ -77,8 +77,6 @@ class SerialMessenger(QtWidgets.QWidget):
         # queued serial signals.
         self._handling_error = False
 
-        self.status_note = "Choose a COM port and baud rate."
-
         self.setWindowTitle("COM Port Messenger")
         self.resize(1200, 900)
         self.setMinimumSize(640, 420)
@@ -208,11 +206,6 @@ class SerialMessenger(QtWidgets.QWidget):
 
         self.port_choice.setCurrentIndex(-1)
 
-        if not ports:
-            self.status_note = "No COM ports found."
-
-            self._refresh_state()
-
     def _try_open(self) -> None:
         """Open the selected COM port when both choices exist."""
         if self.connection is not None:
@@ -259,7 +252,7 @@ class SerialMessenger(QtWidgets.QWidget):
             port_name,
         )
 
-        self._port_opened(port_name)
+        self._port_opened()
 
         self._start_baud_rate_check()
 
@@ -282,21 +275,11 @@ class SerialMessenger(QtWidgets.QWidget):
 
         self._try_open()
 
-    def _port_opened(
-        self,
-        port_name: str,
-    ) -> None:
+    def _port_opened(self) -> None:
         """Lock the port and keep the baud-rate selector available."""
         self.port_choice.setEnabled(False)
 
         self.input_area.setEnabled(False)
-
-        self.status_note = (
-            f"Connected to {port_name}. "
-            "Waiting for matching baud rate on the other COM port..."
-        )
-
-        self._refresh_state()
 
     def _start_baud_rate_check(self) -> None:
         """Start the baud-rate handshake."""
@@ -348,11 +331,7 @@ class SerialMessenger(QtWidgets.QWidget):
 
         self.input_area.setEnabled(True)
 
-        self.status_note = f"Connected at " f"{connection.baud_rate} baud."
-
         self.input_area.setFocus()
-
-        self._refresh_state()
 
     def _baud_rate_check_timed_out(self) -> None:
         """Handle failure to verify within the allowed time."""
@@ -386,8 +365,6 @@ class SerialMessenger(QtWidgets.QWidget):
         if connection.send_character(character):
             self.sent_characters += 1
 
-            self.status_note = "Sending characters directly."
-
             self._refresh_state()
 
     def _append_received(
@@ -418,9 +395,7 @@ class SerialMessenger(QtWidgets.QWidget):
 
     def _refresh_state(self) -> None:
         """Refresh the status display."""
-        self.state_label.setText(
-            f"Sent characters: " f"{self.sent_characters}\n" f"{self.status_note}"
-        )
+        self.state_label.setText(f"Sent characters: {self.sent_characters}")
 
     def _show_open_error(
         self,
@@ -433,9 +408,6 @@ class SerialMessenger(QtWidgets.QWidget):
         self._handling_error = True
 
         try:
-            self.status_note = message
-            self._refresh_state()
-
             QtWidgets.QMessageBox.critical(
                 self,
                 "COM Port Messenger",
@@ -471,9 +443,6 @@ class SerialMessenger(QtWidgets.QWidget):
             # Stop ALL sources of new verification work first.
             self.baud_check_timer.stop()
             self.baud_retry_timer.stop()
-
-            self.status_note = message
-            self._refresh_state()
 
             # Critical ordering:
             #
@@ -549,10 +518,6 @@ class SerialMessenger(QtWidgets.QWidget):
         self.baud_rate_choice.setCurrentIndex(-1)
 
         self.input_area.setEnabled(False)
-
-        self.status_note = "Choose a COM port and baud rate."
-
-        self._refresh_state()
 
     def _apply_style(self) -> None:
         """Apply the application style."""
