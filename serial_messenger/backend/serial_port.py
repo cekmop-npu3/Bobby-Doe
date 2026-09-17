@@ -29,8 +29,10 @@ WRITE_TIMEOUT_SECONDS: Final[float] = 0.25
 
 RECEIVE_POLL_INTERVAL_MS: Final[int] = 20
 
-CONTROL_FRAME_START: Final[str] = "\x1eSM1:"
-CONTROL_FRAME_END: Final[str] = "\x1f"
+# Keep verification traffic within printable ASCII. Some serial bridges handle
+# terminal control characters differently even when ordinary text passes.
+CONTROL_FRAME_START: Final[str] = "[SM1:"
+CONTROL_FRAME_END: Final[str] = "]"
 
 CONTROL_HELLO: Final[str] = "HELLO"
 CONTROL_ACK: Final[str] = "ACK"
@@ -442,22 +444,17 @@ class SerialConnection(QtCore.QObject):
         if self.port is None or not self.port.is_open:
             return False
 
-        frame = f"{CONTROL_FRAME_START}" f"{payload}" f"{CONTROL_FRAME_END}"
+        frame = f"{CONTROL_FRAME_START}{payload}{CONTROL_FRAME_END}"
 
         try:
-            encoded = frame.encode("utf-8")
-
-            written = self.port.write(encoded)
-
-            if written != len(encoded):
-                LOGGER.debug(
-                    "Partial control-frame write on %s: " "%s/%s bytes.",
-                    self.port_name,
-                    written,
-                    len(encoded),
-                )
-
-                return False
+            for character in frame:
+                encoded = character.encode("utf-8")
+                if self.port.write(encoded) != len(encoded):
+                    LOGGER.debug(
+                        "Partial control-frame write on %s.",
+                        self.port_name,
+                    )
+                    return False
 
             LOGGER.debug(
                 "Sent control frame %r through %s.",

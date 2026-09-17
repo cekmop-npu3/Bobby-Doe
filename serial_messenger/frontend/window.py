@@ -284,7 +284,7 @@ class SerialMessenger(QtWidgets.QWidget):
         """Connect UI signals."""
         self.port_choice.activated.connect(self._try_open)
 
-        self.baud_rate_choice.currentIndexChanged.connect(self._try_open)
+        self.baud_rate_choice.currentIndexChanged.connect(self._change_baud_rate)
 
         self.input_area.character_entered.connect(self._send_character)
 
@@ -351,14 +351,31 @@ class SerialMessenger(QtWidgets.QWidget):
 
         self._start_baud_rate_check()
 
+    def _change_baud_rate(self) -> None:
+        """Reconnect the selected port when the baud rate changes.
+
+        :return: ``None``.
+        """
+        if self._handling_error:
+            return
+
+        baud_rate = self.baud_rate_choice.currentData()
+        if baud_rate is None:
+            return
+
+        if self.connection is not None:
+            if baud_rate == self.connection.baud_rate:
+                return
+            self._close_connection()
+
+        self._try_open()
+
     def _port_opened(
         self,
         port_name: str,
     ) -> None:
-        """Lock selectors after opening the port."""
+        """Lock the port and keep the baud-rate selector available."""
         self.port_choice.setEnabled(False)
-
-        self.baud_rate_choice.setEnabled(False)
 
         self.input_area.setEnabled(False)
 
@@ -566,8 +583,11 @@ class SerialMessenger(QtWidgets.QWidget):
         finally:
             self._handling_error = False
 
-    def _reset_connection_controls(self) -> None:
-        """Close the active connection and unlock selectors."""
+    def _close_connection(self) -> None:
+        """Stop the active connection without changing selector values.
+
+        :return: ``None``.
+        """
         self.baud_check_timer.stop()
         self.baud_retry_timer.stop()
 
@@ -597,6 +617,13 @@ class SerialMessenger(QtWidgets.QWidget):
 
         self._connection_scope.close()
         self._connection_scope = ExitStack()
+
+    def _reset_connection_controls(self) -> None:
+        """Close the active connection and unlock cleared selectors.
+
+        :return: ``None``.
+        """
+        self._close_connection()
 
         self.port_choice.setEnabled(True)
 
@@ -694,12 +721,7 @@ class SerialMessenger(QtWidgets.QWidget):
         event: QtGui.QCloseEvent | None,
     ) -> None:
         """Close timers and the serial connection before exiting."""
-        self.baud_check_timer.stop()
-        self.baud_retry_timer.stop()
-
-        self.connection = None
-
-        self._connection_scope.close()
+        self._close_connection()
 
         LOGGER.info("Serial Messenger window closed.")
 
