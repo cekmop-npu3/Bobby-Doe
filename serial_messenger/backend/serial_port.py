@@ -12,7 +12,6 @@ from PyQt6 import QtCore
 from serial import Serial, SerialException, SerialTimeoutException
 from serial.tools import list_ports
 
-
 __all__ = ("BAUD_RATES", "SerialConnection")
 
 
@@ -70,11 +69,7 @@ class ReceiverThread(QtCore.QThread):
     @override
     def run(self) -> None:
         """Read available bytes until the thread is stopped."""
-        decoder = getincrementaldecoder(
-            "utf-8"
-        )(
-            errors="replace"
-        )
+        decoder = getincrementaldecoder("utf-8")(errors="replace")
 
         while self._active:
             try:
@@ -97,23 +92,17 @@ class ReceiverThread(QtCore.QThread):
                         self.data_received.emit(text)
 
                 else:
-                    self.msleep(
-                        RECEIVE_POLL_INTERVAL_MS
-                    )
+                    self.msleep(RECEIVE_POLL_INTERVAL_MS)
 
             except (OSError, SerialException) as error:
                 if self._active:
-                    self.error_occurred.emit(
-                        f"Receive error: {error}"
-                    )
+                    self.error_occurred.emit(f"Receive error: {error}")
 
                 return
 
             except Exception as error:
                 if self._active:
-                    self.error_occurred.emit(
-                        f"Unexpected receive error: {error}"
-                    )
+                    self.error_occurred.emit(f"Unexpected receive error: {error}")
 
                 return
 
@@ -152,14 +141,9 @@ class SerialConnection(QtCore.QObject):
     @staticmethod
     def available_ports() -> Generator[str, None, None]:
         """Yield system COM-port names."""
-        LOGGER.debug(
-            "Enumerating serial ports."
-        )
+        LOGGER.debug("Enumerating serial ports.")
 
-        return (
-            item.device
-            for item in list_ports.comports()
-        )
+        return (item.device for item in list_ports.comports())
 
     def __enter__(self) -> Self:
         """Open the selected port and start receiving."""
@@ -197,17 +181,11 @@ class SerialConnection(QtCore.QObject):
                 f"Could not open {self.port_name}: {error}"
             ) from error
 
-        self.receiver = ReceiverThread(
-            self.port
-        )
+        self.receiver = ReceiverThread(self.port)
 
-        self.receiver.data_received.connect(
-            self._handle_received_text
-        )
+        self.receiver.data_received.connect(self._handle_received_text)
 
-        self.receiver.error_occurred.connect(
-            self._handle_receiver_error
-        )
+        self.receiver.error_occurred.connect(self._handle_receiver_error)
 
         self.receiver.start()
 
@@ -221,19 +199,14 @@ class SerialConnection(QtCore.QObject):
     @property
     def verification_finished(self) -> bool:
         """Return whether verification has succeeded or failed."""
-        return (
-            self._baud_rate_confirmed
-            or self._verification_failed
-        )
+        return self._baud_rate_confirmed or self._verification_failed
 
     def start_baud_rate_check(self) -> bool:
         """Try to send a HELLO verification frame."""
         if self.verification_finished:
             return False
 
-        return self._write_control_frame(
-            f"{CONTROL_HELLO}:{self.baud_rate}"
-        )
+        return self._write_control_frame(f"{CONTROL_HELLO}:{self.baud_rate}")
 
     def _handle_receiver_error(
         self,
@@ -262,10 +235,7 @@ class SerialConnection(QtCore.QObject):
         self._control_buffer += text
 
         # Prevent malformed/mismatched input from growing indefinitely.
-        if (
-            len(self._control_buffer)
-            > MAX_CONTROL_BUFFER_LENGTH
-        ):
+        if len(self._control_buffer) > MAX_CONTROL_BUFFER_LENGTH:
             LOGGER.debug(
                 "Discarding oversized control buffer on %s.",
                 self.port_name,
@@ -276,29 +246,21 @@ class SerialConnection(QtCore.QObject):
             return
 
         while self._control_buffer:
-            frame_start = self._control_buffer.find(
-                CONTROL_FRAME_START
-            )
+            frame_start = self._control_buffer.find(CONTROL_FRAME_START)
 
             if frame_start == -1:
                 self._handle_text_without_control_frame()
                 return
 
             if frame_start > 0:
-                prefix = self._control_buffer[
-                    :frame_start
-                ]
+                prefix = self._control_buffer[:frame_start]
 
                 # User text is only delivered after successful
                 # verification.
                 if self._baud_rate_confirmed:
                     self.received.emit(prefix)
 
-                self._control_buffer = (
-                    self._control_buffer[
-                        frame_start:
-                    ]
-                )
+                self._control_buffer = self._control_buffer[frame_start:]
 
             frame_end = self._control_buffer.find(
                 CONTROL_FRAME_END,
@@ -309,20 +271,11 @@ class SerialConnection(QtCore.QObject):
                 # We may have received only part of the frame.
                 return
 
-            frame = self._control_buffer[
-                len(CONTROL_FRAME_START):
-                frame_end
-            ]
+            frame = self._control_buffer[len(CONTROL_FRAME_START) : frame_end]
 
-            self._control_buffer = (
-                self._control_buffer[
-                    frame_end + 1:
-                ]
-            )
+            self._control_buffer = self._control_buffer[frame_end + 1 :]
 
-            self._handle_control_frame(
-                frame
-            )
+            self._handle_control_frame(frame)
 
             if self._verification_failed:
                 self._control_buffer = ""
@@ -339,37 +292,23 @@ class SerialConnection(QtCore.QObject):
             len(CONTROL_FRAME_START) - 1,
         )
 
-        while (
-            prefix_length
-            and not CONTROL_FRAME_START.startswith(
-                self._control_buffer[
-                    -prefix_length:
-                ]
-            )
+        while prefix_length and not CONTROL_FRAME_START.startswith(
+            self._control_buffer[-prefix_length:]
         ):
             prefix_length -= 1
 
         if prefix_length:
-            normal_text = self._control_buffer[
-                :-prefix_length
-            ]
+            normal_text = self._control_buffer[:-prefix_length]
 
-            remainder = self._control_buffer[
-                -prefix_length:
-            ]
+            remainder = self._control_buffer[-prefix_length:]
         else:
             normal_text = self._control_buffer
             remainder = ""
 
         # Before verification, arbitrary incoming characters are
         # discarded because mismatched baud rates may create garbage.
-        if (
-            self._baud_rate_confirmed
-            and normal_text
-        ):
-            self.received.emit(
-                normal_text
-            )
+        if self._baud_rate_confirmed and normal_text:
+            self.received.emit(normal_text)
 
         self._control_buffer = remainder
 
@@ -381,9 +320,7 @@ class SerialConnection(QtCore.QObject):
         if self._verification_failed:
             return
 
-        command, separator, baud_rate_text = (
-            frame.partition(":")
-        )
+        command, separator, baud_rate_text = frame.partition(":")
 
         # A malformed frame may simply be garbage caused by a baud
         # mismatch. Ignore it instead of creating an error storm.
@@ -395,9 +332,7 @@ class SerialConnection(QtCore.QObject):
             return
 
         try:
-            remote_baud_rate = int(
-                baud_rate_text
-            )
+            remote_baud_rate = int(baud_rate_text)
 
         except ValueError:
             LOGGER.debug(
@@ -428,9 +363,7 @@ class SerialConnection(QtCore.QObject):
             self._confirm_baud_rate()
 
             # Try to tell the other side as well.
-            self._write_control_frame(
-                f"{CONTROL_ACK}:{self.baud_rate}"
-            )
+            self._write_control_frame(f"{CONTROL_ACK}:{self.baud_rate}")
 
             return
 
@@ -503,39 +436,22 @@ class SerialConnection(QtCore.QObject):
         """
         if self.verification_finished:
             # ACK is still allowed after successful verification.
-            if (
-                not self._baud_rate_confirmed
-                or not payload.startswith(
-                    CONTROL_ACK
-                )
-            ):
+            if not self._baud_rate_confirmed or not payload.startswith(CONTROL_ACK):
                 return False
 
-        if (
-            self.port is None
-            or not self.port.is_open
-        ):
+        if self.port is None or not self.port.is_open:
             return False
 
-        frame = (
-            f"{CONTROL_FRAME_START}"
-            f"{payload}"
-            f"{CONTROL_FRAME_END}"
-        )
+        frame = f"{CONTROL_FRAME_START}" f"{payload}" f"{CONTROL_FRAME_END}"
 
         try:
-            encoded = frame.encode(
-                "utf-8"
-            )
+            encoded = frame.encode("utf-8")
 
-            written = self.port.write(
-                encoded
-            )
+            written = self.port.write(encoded)
 
             if written != len(encoded):
                 LOGGER.debug(
-                    "Partial control-frame write on %s: "
-                    "%s/%s bytes.",
+                    "Partial control-frame write on %s: " "%s/%s bytes.",
                     self.port_name,
                     written,
                     len(encoded),
@@ -573,9 +489,7 @@ class SerialConnection(QtCore.QObject):
                 error,
             )
 
-            self._fail_verification(
-                f"Baud-rate verification error: {error}"
-            )
+            self._fail_verification(f"Baud-rate verification error: {error}")
 
             return False
 
@@ -587,28 +501,17 @@ class SerialConnection(QtCore.QObject):
         if not self._baud_rate_confirmed:
             return False
 
-        if (
-            self.port is None
-            or not self.port.is_open
-        ):
-            self.error.emit(
-                "COM port is not open."
-            )
+        if self.port is None or not self.port.is_open:
+            self.error.emit("COM port is not open.")
             return False
 
         try:
-            encoded = character.encode(
-                "utf-8"
-            )
+            encoded = character.encode("utf-8")
 
-            written = self.port.write(
-                encoded
-            )
+            written = self.port.write(encoded)
 
             if written != len(encoded):
-                self.error.emit(
-                    "Send error: incomplete write."
-                )
+                self.error.emit("Send error: incomplete write.")
                 return False
 
             LOGGER.debug(
@@ -619,9 +522,7 @@ class SerialConnection(QtCore.QObject):
             return True
 
         except SerialTimeoutException:
-            self.error.emit(
-                "Send error: write timeout."
-            )
+            self.error.emit("Send error: write timeout.")
 
             return False
 
@@ -637,9 +538,7 @@ class SerialConnection(QtCore.QObject):
                 error,
             )
 
-            self.error.emit(
-                f"Send error: {error}"
-            )
+            self.error.emit(f"Send error: {error}")
 
             return False
 
@@ -658,10 +557,7 @@ class SerialConnection(QtCore.QObject):
             self.receiver.stop()
             self.receiver = None
 
-        if (
-            self.port is not None
-            and self.port.is_open
-        ):
+        if self.port is not None and self.port.is_open:
             try:
                 self.port.close()
 

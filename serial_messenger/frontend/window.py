@@ -10,7 +10,6 @@ from PyQt6 import QtCore, QtGui, QtWidgets
 
 from backend import BAUD_RATES, SerialConnection
 
-
 __all__ = ("SerialMessenger",)
 
 
@@ -33,9 +32,7 @@ class ImmediateInput(QtWidgets.QPlainTextEdit):
         """Create the immediate-transmission input area."""
         super().__init__()
 
-        self.setPlaceholderText(
-            "Type here — every character is sent immediately"
-        )
+        self.setPlaceholderText("Type here — every character is sent immediately")
 
     @override
     def keyPressEvent(
@@ -52,21 +49,15 @@ class ImmediateInput(QtWidgets.QPlainTextEdit):
             QtCore.Qt.Key.Key_Return,
             QtCore.Qt.Key.Key_Enter,
         ):
-            self.character_entered.emit(
-                "\n"
-            )
+            self.character_entered.emit("\n")
 
             event.accept()
             return
 
-        super().keyPressEvent(
-            event
-        )
+        super().keyPressEvent(event)
 
         if text and text.isprintable():
-            self.character_entered.emit(
-                text
-            )
+            self.character_entered.emit(text)
 
 
 class SerialMessenger(QtWidgets.QWidget):
@@ -86,13 +77,9 @@ class SerialMessenger(QtWidgets.QWidget):
         # queued serial signals.
         self._handling_error = False
 
-        self.status_note = (
-            "Choose a COM port and baud rate."
-        )
+        self.status_note = "Choose a COM port and baud rate."
 
-        self.setWindowTitle(
-            "Serial Messenger"
-        )
+        self.setWindowTitle("Serial Messenger")
 
         self.resize(
             880,
@@ -106,39 +93,17 @@ class SerialMessenger(QtWidgets.QWidget):
         self._load_ports()
         self._refresh_state()
 
-        self.state_timer = QtCore.QTimer(
-            self
-        )
-
-        self.state_timer.timeout.connect(
-            self._refresh_state
-        )
-
-        self.state_timer.start(
-            1000
-        )
-
         # Overall verification timeout.
-        self.baud_check_timer = QtCore.QTimer(
-            self
-        )
+        self.baud_check_timer = QtCore.QTimer(self)
 
-        self.baud_check_timer.setSingleShot(
-            True
-        )
+        self.baud_check_timer.setSingleShot(True)
 
-        self.baud_check_timer.timeout.connect(
-            self._baud_rate_check_timed_out
-        )
+        self.baud_check_timer.timeout.connect(self._baud_rate_check_timed_out)
 
         # Periodic HELLO retry.
-        self.baud_retry_timer = QtCore.QTimer(
-            self
-        )
+        self.baud_retry_timer = QtCore.QTimer(self)
 
-        self.baud_retry_timer.timeout.connect(
-            self._retry_baud_rate_check
-        )
+        self.baud_retry_timer.timeout.connect(self._retry_baud_rate_check)
 
         self.input_area.setFocus()
 
@@ -146,9 +111,7 @@ class SerialMessenger(QtWidgets.QWidget):
         """Create controls and text widgets."""
         self.port_choice = QtWidgets.QComboBox()
 
-        self.baud_rate_choice = (
-            QtWidgets.QComboBox()
-        )
+        self.baud_rate_choice = QtWidgets.QComboBox()
 
         for value in BAUD_RATES:
             self.baud_rate_choice.addItem(
@@ -156,31 +119,21 @@ class SerialMessenger(QtWidgets.QWidget):
                 value,
             )
 
-        self.baud_rate_choice.setCurrentIndex(
-            -1
-        )
+        self.baud_rate_choice.setCurrentIndex(-1)
 
         self.input_area = ImmediateInput()
 
         self.output_area = QtWidgets.QPlainTextEdit()
-        self.output_area.setReadOnly(
-            True
-        )
+        self.output_area.setReadOnly(True)
 
         self.state_label = QtWidgets.QLabel()
-        self.state_label.setWordWrap(
-            True
-        )
+        self.state_label.setWordWrap(True)
 
-        self.state_label.setObjectName(
-            "stateLabel"
-        )
+        self.state_label.setObjectName("stateLabel")
 
     def _create_layout(self) -> None:
         """Arrange the application widgets."""
-        layout = QtWidgets.QGridLayout(
-            self
-        )
+        layout = QtWidgets.QGridLayout(self)
 
         layout.setContentsMargins(
             24,
@@ -189,42 +142,24 @@ class SerialMessenger(QtWidgets.QWidget):
             24,
         )
 
-        layout.setHorizontalSpacing(
-            18
-        )
+        layout.setHorizontalSpacing(18)
 
-        layout.setVerticalSpacing(
-            16
-        )
+        layout.setVerticalSpacing(16)
 
-        heading = QtWidgets.QLabel(
-            "SERIAL MESSENGER"
-        )
+        heading = QtWidgets.QLabel("SERIAL MESSENGER")
 
-        heading.setObjectName(
-            "heading"
-        )
+        heading.setObjectName("heading")
 
-        subtitle = QtWidgets.QLabel(
-            "Variant 1 · direct character transmission"
-        )
+        subtitle = QtWidgets.QLabel("Variant 1 · direct character transmission")
 
-        subtitle.setObjectName(
-            "subtitle"
-        )
+        subtitle.setObjectName("subtitle")
 
         title_box = QtWidgets.QVBoxLayout()
-        title_box.setSpacing(
-            1
-        )
+        title_box.setSpacing(1)
 
-        title_box.addWidget(
-            heading
-        )
+        title_box.addWidget(heading)
 
-        title_box.addWidget(
-            subtitle
-        )
+        title_box.addWidget(subtitle)
 
         layout.addLayout(
             title_box,
@@ -234,14 +169,10 @@ class SerialMessenger(QtWidgets.QWidget):
             2,
         )
 
-        control = self._section(
-            "Connection"
-        )
+        control = self._section("Connection")
 
         form = QtWidgets.QFormLayout()
-        form.setSpacing(
-            10
-        )
+        form.setSpacing(10)
 
         form.addRow(
             "COM port",
@@ -253,21 +184,11 @@ class SerialMessenger(QtWidgets.QWidget):
             self.baud_rate_choice,
         )
 
-        self._content_layout(
-            control
-        ).addLayout(
-            form
-        )
+        self._content_layout(control).addLayout(form)
 
-        state = self._section(
-            "Activity"
-        )
+        state = self._section("Activity")
 
-        self._content_layout(
-            state
-        ).addWidget(
-            self.state_label
-        )
+        self._content_layout(state).addWidget(self.state_label)
 
         layout.addWidget(
             control,
@@ -281,25 +202,13 @@ class SerialMessenger(QtWidgets.QWidget):
             1,
         )
 
-        outgoing = self._section(
-            "Send now"
-        )
+        outgoing = self._section("Send now")
 
-        self._content_layout(
-            outgoing
-        ).addWidget(
-            self.input_area
-        )
+        self._content_layout(outgoing).addWidget(self.input_area)
 
-        incoming = self._section(
-            "Received"
-        )
+        incoming = self._section("Received")
 
-        self._content_layout(
-            incoming
-        ).addWidget(
-            self.output_area
-        )
+        self._content_layout(incoming).addWidget(self.output_area)
 
         layout.addWidget(
             outgoing,
@@ -335,13 +244,9 @@ class SerialMessenger(QtWidgets.QWidget):
         """Create a titled visual section."""
         frame = QtWidgets.QFrame()
 
-        frame.setObjectName(
-            "section"
-        )
+        frame.setObjectName("section")
 
-        box = QtWidgets.QVBoxLayout(
-            frame
-        )
+        box = QtWidgets.QVBoxLayout(frame)
 
         box.setContentsMargins(
             16,
@@ -350,21 +255,13 @@ class SerialMessenger(QtWidgets.QWidget):
             16,
         )
 
-        box.setSpacing(
-            10
-        )
+        box.setSpacing(10)
 
-        label = QtWidgets.QLabel(
-            title
-        )
+        label = QtWidgets.QLabel(title)
 
-        label.setObjectName(
-            "sectionTitle"
-        )
+        label.setObjectName("sectionTitle")
 
-        box.addWidget(
-            label
-        )
+        box.addWidget(label)
 
         return frame
 
@@ -379,45 +276,28 @@ class SerialMessenger(QtWidgets.QWidget):
             layout,
             QtWidgets.QVBoxLayout,
         ):
-            raise TypeError(
-                "Section frame does not have "
-                "a vertical layout."
-            )
+            raise TypeError("Section frame does not have " "a vertical layout.")
 
         return layout
 
     def _connect_signals(self) -> None:
         """Connect UI signals."""
-        self.port_choice.activated.connect(
-            self._try_open
-        )
+        self.port_choice.activated.connect(self._try_open)
 
-        self.baud_rate_choice.currentIndexChanged.connect(
-            self._try_open
-        )
+        self.baud_rate_choice.currentIndexChanged.connect(self._try_open)
 
-        self.input_area.character_entered.connect(
-            self._send_character
-        )
+        self.input_area.character_entered.connect(self._send_character)
 
     def _load_ports(self) -> None:
         """Load currently available serial ports."""
-        ports = list(
-            SerialConnection.available_ports()
-        )
+        ports = list(SerialConnection.available_ports())
 
-        self.port_choice.addItems(
-            ports
-        )
+        self.port_choice.addItems(ports)
 
-        self.port_choice.setCurrentIndex(
-            -1
-        )
+        self.port_choice.setCurrentIndex(-1)
 
         if not ports:
-            self.status_note = (
-                "No COM ports found."
-            )
+            self.status_note = "No COM ports found."
 
             self._refresh_state()
 
@@ -429,30 +309,18 @@ class SerialMessenger(QtWidgets.QWidget):
         if self._handling_error:
             return
 
-        port_name = (
-            self.port_choice
-            .currentText()
-            .strip()
-        )
+        port_name = self.port_choice.currentText().strip()
 
-        baud_rate = (
-            self.baud_rate_choice
-            .currentData()
-        )
+        baud_rate = self.baud_rate_choice.currentData()
 
-        if (
-            not port_name
-            or baud_rate is None
-        ):
+        if not port_name or baud_rate is None:
             return
 
         try:
-            connection = (
-                self._connection_scope.enter_context(
-                    SerialConnection(
-                        port_name,
-                        baud_rate,
-                    )
+            connection = self._connection_scope.enter_context(
+                SerialConnection(
+                    port_name,
+                    baud_rate,
                 )
             )
 
@@ -462,34 +330,24 @@ class SerialMessenger(QtWidgets.QWidget):
                 error,
             )
 
-            self._show_open_error(
-                str(error)
-            )
+            self._show_open_error(str(error))
 
             return
 
         self.connection = connection
 
-        connection.received.connect(
-            self._append_received
-        )
+        connection.received.connect(self._append_received)
 
-        connection.error.connect(
-            self._show_error
-        )
+        connection.error.connect(self._show_error)
 
-        connection.baud_rate_verified.connect(
-            self._baud_rate_verified
-        )
+        connection.baud_rate_verified.connect(self._baud_rate_verified)
 
         LOGGER.info(
             "Connected frontend to serial port %s.",
             port_name,
         )
 
-        self._port_opened(
-            port_name
-        )
+        self._port_opened(port_name)
 
         self._start_baud_rate_check()
 
@@ -498,17 +356,11 @@ class SerialMessenger(QtWidgets.QWidget):
         port_name: str,
     ) -> None:
         """Lock selectors after opening the port."""
-        self.port_choice.setEnabled(
-            False
-        )
+        self.port_choice.setEnabled(False)
 
-        self.baud_rate_choice.setEnabled(
-            False
-        )
+        self.baud_rate_choice.setEnabled(False)
 
-        self.input_area.setEnabled(
-            False
-        )
+        self.input_area.setEnabled(False)
 
         self.status_note = (
             f"Connected to {port_name}. "
@@ -525,13 +377,9 @@ class SerialMessenger(QtWidgets.QWidget):
         if self.connection.verification_finished:
             return
 
-        self.baud_check_timer.start(
-            BAUD_RATE_CHECK_TIMEOUT_MS
-        )
+        self.baud_check_timer.start(BAUD_RATE_CHECK_TIMEOUT_MS)
 
-        self.baud_retry_timer.start(
-            BAUD_RATE_RETRY_INTERVAL_MS
-        )
+        self.baud_retry_timer.start(BAUD_RATE_RETRY_INTERVAL_MS)
 
         self.connection.start_baud_rate_check()
 
@@ -543,10 +391,7 @@ class SerialMessenger(QtWidgets.QWidget):
             self.baud_retry_timer.stop()
             return
 
-        if (
-            self.baud_rate_verified
-            or connection.verification_finished
-        ):
+        if self.baud_rate_verified or connection.verification_finished:
             self.baud_retry_timer.stop()
             return
 
@@ -572,14 +417,9 @@ class SerialMessenger(QtWidgets.QWidget):
 
         self.baud_rate_verified = True
 
-        self.input_area.setEnabled(
-            True
-        )
+        self.input_area.setEnabled(True)
 
-        self.status_note = (
-            f"Connected at "
-            f"{connection.baud_rate} baud."
-        )
+        self.status_note = f"Connected at " f"{connection.baud_rate} baud."
 
         self.input_area.setFocus()
 
@@ -614,14 +454,10 @@ class SerialMessenger(QtWidgets.QWidget):
         if not self.baud_rate_verified:
             return
 
-        if connection.send_character(
-            character
-        ):
+        if connection.send_character(character):
             self.sent_characters += 1
 
-            self.status_note = (
-                "Sending characters directly."
-            )
+            self.status_note = "Sending characters directly."
 
             self._refresh_state()
 
@@ -633,13 +469,9 @@ class SerialMessenger(QtWidgets.QWidget):
         if not self.baud_rate_verified:
             return
 
-        cursor = (
-            self.output_area.textCursor()
-        )
+        cursor = self.output_area.textCursor()
 
-        cursor.movePosition(
-            QtGui.QTextCursor.MoveOperation.End
-        )
+        cursor.movePosition(QtGui.QTextCursor.MoveOperation.End)
 
         cursor.insertText(
             text.replace(
@@ -651,18 +483,14 @@ class SerialMessenger(QtWidgets.QWidget):
             )
         )
 
-        self.output_area.setTextCursor(
-            cursor
-        )
+        self.output_area.setTextCursor(cursor)
 
         self.output_area.ensureCursorVisible()
 
     def _refresh_state(self) -> None:
         """Refresh the status display."""
         self.state_label.setText(
-            f"Sent characters: "
-            f"{self.sent_characters}\n"
-            f"{self.status_note}"
+            f"Sent characters: " f"{self.sent_characters}\n" f"{self.status_note}"
         )
 
     def _show_open_error(
@@ -753,62 +581,43 @@ class SerialMessenger(QtWidgets.QWidget):
 
         if connection is not None:
             try:
-                connection.received.disconnect(
-                    self._append_received
-                )
+                connection.received.disconnect(self._append_received)
             except TypeError:
                 pass
 
             try:
-                connection.error.disconnect(
-                    self._show_error
-                )
+                connection.error.disconnect(self._show_error)
             except TypeError:
                 pass
 
             try:
-                connection.baud_rate_verified.disconnect(
-                    self._baud_rate_verified
-                )
+                connection.baud_rate_verified.disconnect(self._baud_rate_verified)
             except TypeError:
                 pass
 
         self._connection_scope.close()
         self._connection_scope = ExitStack()
 
-        self.port_choice.setEnabled(
-            True
-        )
+        self.port_choice.setEnabled(True)
 
-        self.baud_rate_choice.setEnabled(
-            True
-        )
+        self.baud_rate_choice.setEnabled(True)
 
         # Clear the port first. Programmatically changing
         # baud_rate_choice emits currentIndexChanged, but _try_open()
         # then sees no selected COM port and does nothing.
-        self.port_choice.setCurrentIndex(
-            -1
-        )
+        self.port_choice.setCurrentIndex(-1)
 
-        self.baud_rate_choice.setCurrentIndex(
-            -1
-        )
+        self.baud_rate_choice.setCurrentIndex(-1)
 
-        self.input_area.setEnabled(
-            False
-        )
+        self.input_area.setEnabled(False)
 
-        self.status_note = (
-            "Choose a COM port and baud rate."
-        )
+        self.status_note = "Choose a COM port and baud rate."
 
         self._refresh_state()
 
     def _apply_style(self) -> None:
         """Apply the application style."""
-        self.setStyleSheet(
-            """
+        self.setStyleSheet("""
             QWidget {
                 background: #f3f6fb;
                 color: #172033;
@@ -877,8 +686,7 @@ class SerialMessenger(QtWidgets.QWidget):
                 background: #edf1f7;
                 color: #71809c;
             }
-            """
-        )
+            """)
 
     @override
     def closeEvent(
@@ -888,15 +696,12 @@ class SerialMessenger(QtWidgets.QWidget):
         """Close timers and the serial connection before exiting."""
         self.baud_check_timer.stop()
         self.baud_retry_timer.stop()
-        self.state_timer.stop()
 
         self.connection = None
 
         self._connection_scope.close()
 
-        LOGGER.info(
-            "Serial Messenger window closed."
-        )
+        LOGGER.info("Serial Messenger window closed.")
 
         if event is not None:
             event.accept()
