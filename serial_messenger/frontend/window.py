@@ -49,9 +49,8 @@ class ImmediateInput(QtWidgets.QPlainTextEdit):
             QtCore.Qt.Key.Key_Return,
             QtCore.Qt.Key.Key_Enter,
         ):
+            super().keyPressEvent(event)
             self.character_entered.emit("\n")
-
-            event.accept()
             return
 
         super().keyPressEvent(event)
