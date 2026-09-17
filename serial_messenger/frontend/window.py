@@ -17,7 +17,7 @@ LOGGER = logging.getLogger(__name__)
 
 
 # Enough time to configure the second application/window.
-BAUD_RATE_CHECK_TIMEOUT_MS: Final[int] = 30_000
+BAUD_RATE_CHECK_TIMEOUT_MS: Final[int] = 7_000
 
 # Retry once per second while waiting for the other side.
 BAUD_RATE_RETRY_INTERVAL_MS: Final[int] = 1_000
@@ -79,12 +79,9 @@ class SerialMessenger(QtWidgets.QWidget):
 
         self.status_note = "Choose a COM port and baud rate."
 
-        self.setWindowTitle("Serial Messenger")
-
-        self.resize(
-            880,
-            570,
-        )
+        self.setWindowTitle("COM Port Messenger")
+        self.resize(1200, 900)
+        self.setMinimumSize(640, 420)
 
         self._create_widgets()
         self._create_layout()
@@ -122,9 +119,15 @@ class SerialMessenger(QtWidgets.QWidget):
         self.baud_rate_choice.setCurrentIndex(-1)
 
         self.input_area = ImmediateInput()
+        self.input_area.setVerticalScrollBarPolicy(
+            QtCore.Qt.ScrollBarPolicy.ScrollBarAsNeeded
+        )
 
         self.output_area = QtWidgets.QPlainTextEdit()
         self.output_area.setReadOnly(True)
+        self.output_area.setVerticalScrollBarPolicy(
+            QtCore.Qt.ScrollBarPolicy.ScrollBarAsNeeded
+        )
 
         self.state_label = QtWidgets.QLabel()
         self.state_label.setWordWrap(True)
@@ -132,142 +135,51 @@ class SerialMessenger(QtWidgets.QWidget):
         self.state_label.setObjectName("stateLabel")
 
     def _create_layout(self) -> None:
-        """Arrange the application widgets."""
+        """Arrange the resizable controls and text areas."""
         layout = QtWidgets.QGridLayout(self)
+        layout.setContentsMargins(22, 18, 22, 12)
+        layout.setHorizontalSpacing(12)
+        layout.setVerticalSpacing(12)
 
-        layout.setContentsMargins(
-            24,
-            22,
-            24,
-            24,
-        )
+        port_box = self._section("COM port")
+        self._content_layout(port_box).addWidget(self.port_choice)
 
-        layout.setHorizontalSpacing(18)
+        baud_rate_box = self._section("Baud rate")
+        self._content_layout(baud_rate_box).addWidget(self.baud_rate_choice)
 
-        layout.setVerticalSpacing(16)
+        controls = QtWidgets.QHBoxLayout()
+        controls.addWidget(port_box)
+        controls.addWidget(baud_rate_box)
+        controls.addStretch()
+        layout.addLayout(controls, 0, 0, 1, 2)
 
-        heading = QtWidgets.QLabel("SERIAL MESSENGER")
-
-        heading.setObjectName("heading")
-
-        subtitle = QtWidgets.QLabel("Variant 1 · direct character transmission")
-
-        subtitle.setObjectName("subtitle")
-
-        title_box = QtWidgets.QVBoxLayout()
-        title_box.setSpacing(1)
-
-        title_box.addWidget(heading)
-
-        title_box.addWidget(subtitle)
-
-        layout.addLayout(
-            title_box,
-            0,
-            0,
-            1,
-            2,
-        )
-
-        control = self._section("Connection")
-
-        form = QtWidgets.QFormLayout()
-        form.setSpacing(10)
-
-        form.addRow(
-            "COM port",
-            self.port_choice,
-        )
-
-        form.addRow(
-            "Baud rate",
-            self.baud_rate_choice,
-        )
-
-        self._content_layout(control).addLayout(form)
-
-        state = self._section("Activity")
-
-        self._content_layout(state).addWidget(self.state_label)
-
-        layout.addWidget(
-            control,
-            1,
-            0,
-        )
-
-        layout.addWidget(
-            state,
-            1,
-            1,
-        )
-
-        outgoing = self._section("Send now")
-
+        outgoing = self._section("Input")
         self._content_layout(outgoing).addWidget(self.input_area)
 
-        incoming = self._section("Received")
-
+        incoming = self._section("Output")
         self._content_layout(incoming).addWidget(self.output_area)
 
-        layout.addWidget(
-            outgoing,
-            2,
-            0,
-        )
+        layout.addWidget(outgoing, 1, 0)
+        layout.addWidget(incoming, 1, 1)
+        layout.addWidget(self.state_label, 2, 0, 1, 2)
 
-        layout.addWidget(
-            incoming,
-            2,
-            1,
-        )
-
-        layout.setRowStretch(
-            2,
-            1,
-        )
-
-        layout.setColumnStretch(
-            0,
-            1,
-        )
-
-        layout.setColumnStretch(
-            1,
-            1,
-        )
+        layout.setRowStretch(1, 1)
+        layout.setColumnStretch(0, 1)
+        layout.setColumnStretch(1, 1)
 
     @staticmethod
     def _section(
         title: str,
-    ) -> QtWidgets.QFrame:
+    ) -> QtWidgets.QGroupBox:
         """Create a titled visual section."""
-        frame = QtWidgets.QFrame()
-
-        frame.setObjectName("section")
-
-        box = QtWidgets.QVBoxLayout(frame)
-
-        box.setContentsMargins(
-            16,
-            14,
-            16,
-            16,
-        )
-
-        box.setSpacing(10)
-
-        label = QtWidgets.QLabel(title)
-
-        label.setObjectName("sectionTitle")
-
-        box.addWidget(label)
-
-        return frame
+        section = QtWidgets.QGroupBox(title)
+        box = QtWidgets.QVBoxLayout(section)
+        box.setContentsMargins(10, 18, 10, 10)
+        return section
 
     @staticmethod
     def _content_layout(
-        frame: QtWidgets.QFrame,
+        frame: QtWidgets.QGroupBox,
     ) -> QtWidgets.QVBoxLayout:
         """Return the section's vertical content layout."""
         layout = frame.layout()
@@ -276,7 +188,7 @@ class SerialMessenger(QtWidgets.QWidget):
             layout,
             QtWidgets.QVBoxLayout,
         ):
-            raise TypeError("Section frame does not have " "a vertical layout.")
+            raise TypeError("Section does not have a vertical layout.")
 
         return layout
 
@@ -526,7 +438,7 @@ class SerialMessenger(QtWidgets.QWidget):
 
             QtWidgets.QMessageBox.critical(
                 self,
-                "Serial Messenger",
+                "COM Port Messenger",
                 message,
             )
 
@@ -576,7 +488,7 @@ class SerialMessenger(QtWidgets.QWidget):
 
             QtWidgets.QMessageBox.critical(
                 self,
-                "Serial Messenger",
+                "COM Port Messenger",
                 message,
             )
 
@@ -646,72 +558,35 @@ class SerialMessenger(QtWidgets.QWidget):
         """Apply the application style."""
         self.setStyleSheet("""
             QWidget {
-                background: #f3f6fb;
-                color: #172033;
+                background: #f0f0f0;
+                color: #202020;
                 font: 14px 'Segoe UI';
             }
 
-            QLabel {
-                background: transparent;
-                border: none;
+            QGroupBox {
+                border: 1px solid #c8c8c8;
+                margin-top: 9px;
+                padding-top: 7px;
             }
 
-            QLabel#heading {
-                background: transparent;
-                color: #263a84;
-                font-size: 23px;
-                font-weight: 800;
-                letter-spacing: 1px;
-            }
-
-            QLabel#subtitle {
-                background: transparent;
-                color: #65708a;
-                font-size: 12px;
-            }
-
-            QFrame#section {
-                background: white;
-                border: 1px solid #d9e1f0;
-                border-radius: 14px;
-            }
-
-            QLabel#sectionTitle {
-                background: transparent;
-                color: #263a84;
-                font-size: 15px;
-                font-weight: 700;
-            }
-
-            QLabel#stateLabel {
-                background: transparent;
-                color: #40506d;
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                left: 8px;
+                padding: 0 3px;
             }
 
             QComboBox {
-                background: #f9fbff;
-                border: 1px solid #cbd6eb;
-                border-radius: 8px;
-                padding: 8px;
-                min-height: 22px;
+                background: white;
+                border: 1px solid #a8a8a8;
+                padding: 5px 8px;
+                min-height: 24px;
             }
 
             QPlainTextEdit {
-                background: transparent;
-                border: 1px solid #cbd6eb;
-                border-radius: 8px;
-                padding: 8px;
-                selection-background-color: #9db5ff;
-            }
-
-            QComboBox:hover,
-            QPlainTextEdit:focus {
-                border-color: #5271d7;
-            }
-
-            QComboBox:disabled {
-                background: #edf1f7;
-                color: #71809c;
+                background: white;
+                border: 1px solid #303030;
+                padding: 4px;
+                selection-background-color: #9bbcff;
             }
             """)
 
