@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from contextlib import ExitStack
 import logging
-from typing import override
+from typing import Final, override
 
 from PyQt6 import QtCore, QtGui, QtWidgets
 
@@ -15,6 +15,7 @@ __all__ = ("SerialMessenger",)
 
 
 LOGGER = logging.getLogger(__name__)
+BAUD_RATE_CHECK_TIMEOUT_MS: Final[int] = 10_000
 
 
 class ImmediateInput(QtWidgets.QPlainTextEdit):
@@ -298,7 +299,7 @@ class SerialMessenger(QtWidgets.QWidget):
         if self.connection is None:
             return
 
-        self.baud_check_timer.start(2000)
+        self.baud_check_timer.start(BAUD_RATE_CHECK_TIMEOUT_MS)
         self.connection.start_baud_rate_check()
 
     def _baud_rate_verified(self) -> None:
@@ -373,7 +374,7 @@ class SerialMessenger(QtWidgets.QWidget):
         )
 
     def _show_error(self, message: str) -> None:
-        """Show a serial error and preserve it in the state area.
+        """Show a serial error, then release and reset connection controls.
 
         :param message: Human-readable explanation of the error.
         :return: ``None``.
@@ -393,6 +394,23 @@ class SerialMessenger(QtWidgets.QWidget):
             "Serial Messenger",
             message,
         )
+        self._reset_connection_controls()
+
+    def _reset_connection_controls(self) -> None:
+        """Close a failed connection and make cleared selectors available.
+
+        :return: ``None``.
+        """
+        self._connection_scope.close()
+        self._connection_scope = ExitStack()
+        self.connection = None
+        self.baud_rate_verified = False
+
+        self.port_choice.setEnabled(True)
+        self.baud_rate_choice.setEnabled(True)
+        self.port_choice.setCurrentIndex(-1)
+        self.baud_rate_choice.setCurrentIndex(-1)
+        self.input_area.setEnabled(False)
 
     def _apply_style(self) -> None:
         """Apply the visual style for the application window.
