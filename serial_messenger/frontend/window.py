@@ -115,8 +115,10 @@ class SerialMessenger(QtWidgets.QWidget):
             )
 
         self.baud_rate_choice.setCurrentIndex(-1)
+        self.baud_rate_choice.setEnabled(False)
 
         self.input_area = ImmediateInput()
+        self.input_area.setEnabled(False)
         self.input_area.setVerticalScrollBarPolicy(
             QtCore.Qt.ScrollBarPolicy.ScrollBarAsNeeded
         )
@@ -192,7 +194,7 @@ class SerialMessenger(QtWidgets.QWidget):
 
     def _connect_signals(self) -> None:
         """Connect UI signals."""
-        self.port_choice.activated.connect(self._try_open)
+        self.port_choice.currentIndexChanged.connect(self._port_selected)
 
         self.baud_rate_choice.currentIndexChanged.connect(self._change_baud_rate)
 
@@ -205,6 +207,23 @@ class SerialMessenger(QtWidgets.QWidget):
         self.port_choice.addItems(ports)
 
         self.port_choice.setCurrentIndex(-1)
+
+    def _port_selected(self) -> None:
+        """Enable speed selection only after a COM port is selected.
+
+        :return: ``None``.
+        """
+        if self._handling_error:
+            return
+
+        has_port = bool(self.port_choice.currentText().strip())
+        self.baud_rate_choice.setEnabled(has_port)
+
+        if not has_port:
+            self.baud_rate_choice.setCurrentIndex(-1)
+            return
+
+        self._try_open()
 
     def _try_open(self) -> None:
         """Open the selected COM port when both choices exist."""
@@ -508,14 +527,13 @@ class SerialMessenger(QtWidgets.QWidget):
 
         self.port_choice.setEnabled(True)
 
-        self.baud_rate_choice.setEnabled(True)
-
         # Clear the port first. Programmatically changing
         # baud_rate_choice emits currentIndexChanged, but _try_open()
         # then sees no selected COM port and does nothing.
         self.port_choice.setCurrentIndex(-1)
 
         self.baud_rate_choice.setCurrentIndex(-1)
+        self.baud_rate_choice.setEnabled(False)
 
         self.input_area.setEnabled(False)
 
