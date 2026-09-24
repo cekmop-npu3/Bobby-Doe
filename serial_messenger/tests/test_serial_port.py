@@ -128,7 +128,7 @@ class SerialConnectionTests(unittest.TestCase):
         port.write.return_value = len("Я".encode("utf-8"))
         connection = SerialConnection("COM10", 9600)
         connection.port = port
-        connection._handle_control_frame("ACK:9600")
+        connection._handle_control_frame(connection._with_checksum("ACK:9600"))
 
         self.assertTrue(connection.send_character("Я"))
         port.write.assert_called_once_with("Я".encode("utf-8"))
@@ -142,7 +142,9 @@ class SerialConnectionTests(unittest.TestCase):
         connection = SerialConnection("COM10", 9600)
         connection.error.connect(errors.append)
 
-        connection._handle_control_frame("HELLO:115200")
+        connection._handle_control_frame(
+            connection._with_checksum("HELLO:115200")
+        )
 
         self.assertEqual(
             errors,
@@ -155,14 +157,29 @@ class SerialConnectionTests(unittest.TestCase):
         :return: ``None``.
         """
         port = MagicMock(is_open=True)
-        port.write.return_value = len(b"[SM1:ACK:9600]")
+        expected_frame = b"[SM1:ACK:9600:FDFC]"
+        port.write.return_value = len(expected_frame)
         connection = SerialConnection("COM10", 9600)
         connection.port = port
 
-        connection._handle_control_frame("HELLO:9600")
+        connection._handle_control_frame(connection._with_checksum("HELLO:9600"))
 
         self.assertFalse(connection.verification_finished)
-        port.write.assert_called_once_with(b"[SM1:ACK:9600]")
+        port.write.assert_called_once_with(expected_frame)
+
+    def test_corrupt_control_frame_does_not_verify_or_fail(self) -> None:
+        """Ensure damaged handshake data is ignored until the timeout.
+
+        :return: ``None``.
+        """
+        errors: list[str] = []
+        connection = SerialConnection("COM10", 9600)
+        connection.error.connect(errors.append)
+
+        connection._handle_control_frame("ACK:9600:0000")
+
+        self.assertFalse(connection.verification_finished)
+        self.assertEqual(errors, [])
 
     def test_baud_rate_check_writes_printable_characters(self) -> None:
         """Ensure handshake traffic uses a printable protocol frame.
@@ -177,7 +194,7 @@ class SerialConnectionTests(unittest.TestCase):
         self.assertTrue(connection.start_baud_rate_check())
 
         written = b"".join(call.args[0] for call in port.write.call_args_list)
-        self.assertEqual(written, b"[SM1:HELLO:9600]")
+        self.assertEqual(written, b"[SM1:HELLO:9600:E793]")
         self.assertTrue(all(32 <= byte <= 126 for byte in written))
 
 

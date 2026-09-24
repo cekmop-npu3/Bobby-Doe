@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from binascii import crc_hqx
 import logging
 from codecs import getincrementaldecoder
 from collections.abc import Generator
@@ -210,6 +211,17 @@ class SerialConnection(QtCore.QObject):
 
         return self._write_control_frame(f"{CONTROL_HELLO}:{self.baud_rate}")
 
+    @staticmethod
+    def _with_checksum(payload: str) -> str:
+        """Append an ASCII CRC-16 to one control-frame payload.
+
+        A baud mismatch can occasionally turn damaged bytes into readable
+        ASCII. The checksum prevents such text from being accepted as a
+        protocol message by coincidence.
+        """
+        checksum = crc_hqx(payload.encode("ascii"), 0xFFFF)
+        return f"{payload}:{checksum:04X}"
+
     def _handle_receiver_error(
         self,
         message: str,
@@ -322,13 +334,33 @@ class SerialConnection(QtCore.QObject):
         if self._verification_failed:
             return
 
-        command, separator, baud_rate_text = frame.partition(":")
+        parts = frame.split(":")
 
-        # A malformed frame may simply be garbage caused by a baud
-        # mismatch. Ignore it instead of creating an error storm.
-        if not separator:
+        # A malformed or checksum-invalid frame is normally corrupt data
+        # produced by a baud mismatch. Ignore it and let each endpoint's
+        # verification timeout report the user-facing failure exactly once.
+        if len(parts) != 3:
             LOGGER.debug(
                 "Ignoring malformed control frame on %s.",
+                self.port_name,
+            )
+            return
+
+        command, baud_rate_text, received_checksum = parts
+        payload = f"{command}:{baud_rate_text}"
+
+        try:
+            expected_checksum = self._with_checksum(payload).rsplit(":", 1)[1]
+        except UnicodeEncodeError:
+            LOGGER.debug(
+                "Ignoring non-ASCII control frame on %s.",
+                self.port_name,
+            )
+            return
+
+        if received_checksum != expected_checksum:
+            LOGGER.debug(
+                "Ignoring corrupt control frame on %s.",
                 self.port_name,
             )
             return
@@ -442,7 +474,8 @@ class SerialConnection(QtCore.QObject):
         if self.port is None or not self.port.is_open:
             return False
 
-        frame = f"{CONTROL_FRAME_START}{payload}{CONTROL_FRAME_END}"
+        frame_payload = self._with_checksum(payload)
+        frame = f"{CONTROL_FRAME_START}{frame_payload}{CONTROL_FRAME_END}"
 
         try:
             encoded = frame.encode("ascii")
