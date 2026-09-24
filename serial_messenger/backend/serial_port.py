@@ -29,16 +29,6 @@ WRITE_TIMEOUT_SECONDS: Final[float] = 0.25
 
 RECEIVE_POLL_INTERVAL_MS: Final[int] = 20
 
-# Keep verification traffic within printable ASCII. Some serial bridges handle
-# terminal control characters differently even when ordinary text passes.
-CONTROL_FRAME_START: Final[str] = "[SM1:"
-CONTROL_FRAME_END: Final[str] = "]"
-
-CONTROL_HELLO: Final[str] = "HELLO"
-CONTROL_ACK: Final[str] = "ACK"
-
-MAX_CONTROL_BUFFER_LENGTH: Final[int] = 4096
-
 
 BAUD_RATES: list[int] = [
     110,
@@ -87,10 +77,6 @@ class ReceiverThread(QtCore.QThread):
 
                     if text:
                         # Do not treat malformed UTF-8 as fatal here.
-                        #
-                        # If baud rates differ, receiving garbage is normal.
-                        # SerialConnection decides whether the received text
-                        # contains a valid control frame.
                         self.data_received.emit(text)
 
                 else:
@@ -119,7 +105,6 @@ class SerialConnection(QtCore.QObject):
 
     received = QtCore.pyqtSignal(str)
     error = QtCore.pyqtSignal(str)
-    baud_rate_verified = QtCore.pyqtSignal()
 
     def __init__(
         self,
@@ -135,10 +120,6 @@ class SerialConnection(QtCore.QObject):
         self.port: Serial | None = None
         self.receiver: ReceiverThread | None = None
 
-        self._control_buffer = ""
-
-        self._baud_rate_confirmed = False
-        self._verification_failed = False
 
     @staticmethod
     def available_ports() -> Generator[str, None, None]:
@@ -185,7 +166,7 @@ class SerialConnection(QtCore.QObject):
 
         self.receiver = ReceiverThread(self.port)
 
-        self.receiver.data_received.connect(self._handle_received_text)
+        self.receiver.data_received.connect(self.received.emit)
 
         self.receiver.error_occurred.connect(self._handle_receiver_error)
 
@@ -198,306 +179,18 @@ class SerialConnection(QtCore.QObject):
 
         return self
 
-    @property
-    def verification_finished(self) -> bool:
-        """Return whether verification has succeeded or failed."""
-        return self._baud_rate_confirmed or self._verification_failed
-
-    def start_baud_rate_check(self) -> bool:
-        """Try to send a HELLO verification frame."""
-        if self.verification_finished:
-            return False
-
-        return self._write_control_frame(f"{CONTROL_HELLO}:{self.baud_rate}")
-
     def _handle_receiver_error(
         self,
         message: str,
     ) -> None:
-        """Forward a real serial-port failure once."""
-        if self._verification_failed:
-            return
-
+        """Forward a real serial-port failure."""
         self.error.emit(message)
-
-    def _handle_received_text(
-        self,
-        text: str,
-    ) -> None:
-        """Extract control frames from received text.
-
-        Before baud-rate verification succeeds, arbitrary bytes are
-        discarded. This is important because different baud rates can
-        produce garbage bytes that must not be treated as application
-        data or as repeated fatal errors.
-        """
-        if self._verification_failed:
-            return
-
-        self._control_buffer += text
-
-        # Prevent malformed/mismatched input from growing indefinitely.
-        if len(self._control_buffer) > MAX_CONTROL_BUFFER_LENGTH:
-            LOGGER.debug(
-                "Discarding oversized control buffer on %s.",
-                self.port_name,
-            )
-
-            self._control_buffer = ""
-
-            return
-
-        while self._control_buffer:
-            frame_start = self._control_buffer.find(CONTROL_FRAME_START)
-
-            if frame_start == -1:
-                self._handle_text_without_control_frame()
-                return
-
-            if frame_start > 0:
-                prefix = self._control_buffer[:frame_start]
-
-                # User text is only delivered after successful
-                # verification.
-                if self._baud_rate_confirmed:
-                    self.received.emit(prefix)
-
-                self._control_buffer = self._control_buffer[frame_start:]
-
-            frame_end = self._control_buffer.find(
-                CONTROL_FRAME_END,
-                len(CONTROL_FRAME_START),
-            )
-
-            if frame_end == -1:
-                # We may have received only part of the frame.
-                return
-
-            frame = self._control_buffer[len(CONTROL_FRAME_START) : frame_end]
-
-            self._control_buffer = self._control_buffer[frame_end + 1 :]
-
-            self._handle_control_frame(frame)
-
-            if self._verification_failed:
-                self._control_buffer = ""
-                return
-
-    def _handle_text_without_control_frame(
-        self,
-    ) -> None:
-        """Handle buffered text that contains no complete control frame."""
-        # Preserve a suffix that might be the beginning of
-        # CONTROL_FRAME_START split across multiple reads.
-        prefix_length = min(
-            len(self._control_buffer),
-            len(CONTROL_FRAME_START) - 1,
-        )
-
-        while prefix_length and not CONTROL_FRAME_START.startswith(
-            self._control_buffer[-prefix_length:]
-        ):
-            prefix_length -= 1
-
-        if prefix_length:
-            normal_text = self._control_buffer[:-prefix_length]
-
-            remainder = self._control_buffer[-prefix_length:]
-        else:
-            normal_text = self._control_buffer
-            remainder = ""
-
-        # Before verification, arbitrary incoming characters are
-        # discarded because mismatched baud rates may create garbage.
-        if self._baud_rate_confirmed and normal_text:
-            self.received.emit(normal_text)
-
-        self._control_buffer = remainder
-
-    def _handle_control_frame(
-        self,
-        frame: str,
-    ) -> None:
-        """Handle one extracted protocol control frame."""
-        if self._verification_failed:
-            return
-
-        command, separator, baud_rate_text = frame.partition(":")
-
-        # A malformed frame may simply be garbage caused by a baud
-        # mismatch. Ignore it instead of creating an error storm.
-        if not separator:
-            LOGGER.debug(
-                "Ignoring malformed control frame on %s.",
-                self.port_name,
-            )
-            return
-
-        try:
-            remote_baud_rate = int(baud_rate_text)
-
-        except ValueError:
-            LOGGER.debug(
-                "Ignoring control frame with invalid baud value on %s.",
-                self.port_name,
-            )
-            return
-
-        # A valid protocol frame declaring a different baud rate is a
-        # reliable mismatch. Report it exactly once.
-        if remote_baud_rate != self.baud_rate:
-            self._fail_verification(
-                "Baud rate mismatch: "
-                f"local {self.baud_rate}, "
-                f"remote {remote_baud_rate}."
-            )
-            return
-
-        if command == CONTROL_HELLO:
-            LOGGER.debug(
-                "Received HELLO at %s baud on %s.",
-                self.baud_rate,
-                self.port_name,
-            )
-
-            # Receiving a valid HELLO containing our baud rate already
-            # proves that the incoming configuration is compatible.
-            self._confirm_baud_rate()
-
-            # Try to tell the other side as well.
-            self._write_control_frame(f"{CONTROL_ACK}:{self.baud_rate}")
-
-            return
-
-        if command == CONTROL_ACK:
-            LOGGER.debug(
-                "Received ACK at %s baud on %s.",
-                self.baud_rate,
-                self.port_name,
-            )
-
-            self._confirm_baud_rate()
-            return
-
-        # Unknown commands may also be corrupted traffic.
-        # Do not make them fatal during negotiation.
-        LOGGER.debug(
-            "Ignoring unknown control command %r on %s.",
-            command,
-            self.port_name,
-        )
-
-    def _confirm_baud_rate(self) -> None:
-        """Mark verification as successful exactly once."""
-        if self._baud_rate_confirmed:
-            return
-
-        if self._verification_failed:
-            return
-
-        self._baud_rate_confirmed = True
-
-        LOGGER.info(
-            "Baud rate %s verified on %s.",
-            self.baud_rate,
-            self.port_name,
-        )
-
-        self.baud_rate_verified.emit()
-
-    def _fail_verification(
-        self,
-        message: str,
-    ) -> None:
-        """Report one terminal verification failure."""
-        if self._verification_failed:
-            return
-
-        if self._baud_rate_confirmed:
-            return
-
-        self._verification_failed = True
-
-        LOGGER.warning(
-            "Baud-rate verification failed on %s: %s",
-            self.port_name,
-            message,
-        )
-
-        self.error.emit(message)
-
-    def _write_control_frame(
-        self,
-        payload: str,
-    ) -> bool:
-        """Try to write one protocol control frame.
-
-        A timeout is not fatal during baud-rate negotiation because
-        the other virtual COM endpoint may simply not have been opened
-        yet.
-        """
-        if self.verification_finished:
-            # ACK is still allowed after successful verification.
-            if not self._baud_rate_confirmed or not payload.startswith(CONTROL_ACK):
-                return False
-
-        if self.port is None or not self.port.is_open:
-            return False
-
-        frame = f"{CONTROL_FRAME_START}{payload}{CONTROL_FRAME_END}"
-
-        try:
-            for character in frame:
-                encoded = character.encode("utf-8")
-                if self.port.write(encoded) != len(encoded):
-                    LOGGER.debug(
-                        "Partial control-frame write on %s.",
-                        self.port_name,
-                    )
-                    return False
-
-            LOGGER.debug(
-                "Sent control frame %r through %s.",
-                payload,
-                self.port_name,
-            )
-
-            return True
-
-        except SerialTimeoutException:
-            # Normal while the paired virtual COM endpoint is closed
-            # or unavailable.
-            LOGGER.debug(
-                "Control-frame write timed out on %s.",
-                self.port_name,
-            )
-
-            return False
-
-        except (
-            OSError,
-            SerialException,
-            UnicodeEncodeError,
-            ValueError,
-        ) as error:
-            LOGGER.error(
-                "Could not write control frame through %s: %s",
-                self.port_name,
-                error,
-            )
-
-            self._fail_verification(f"Baud-rate verification error: {error}")
-
-            return False
 
     def send_character(
         self,
         character: str,
     ) -> bool:
         """Write one user-entered character."""
-        if not self._baud_rate_confirmed:
-            return False
-
         if self.port is None or not self.port.is_open:
             self.error.emit("COM port is not open.")
             return False

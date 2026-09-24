@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from contextlib import ExitStack
 import logging
-from typing import Final, override
+from typing import override
 
 from PyQt6 import QtCore, QtGui, QtWidgets
 
@@ -14,13 +14,6 @@ __all__ = ("SerialMessenger",)
 
 
 LOGGER = logging.getLogger(__name__)
-
-
-# Enough time to configure the second application/window.
-BAUD_RATE_CHECK_TIMEOUT_MS: Final[int] = 7_000
-
-# Retry once per second while waiting for the other side.
-BAUD_RATE_RETRY_INTERVAL_MS: Final[int] = 1_000
 
 
 class ImmediateInput(QtWidgets.QPlainTextEdit):
@@ -70,8 +63,6 @@ class SerialMessenger(QtWidgets.QWidget):
         self._connection_scope = ExitStack()
 
         self.sent_characters = 0
-        self.baud_rate_verified = False
-
         # Prevent recursive or repeated QMessageBox calls caused by
         # queued serial signals.
         self._handling_error = False
@@ -86,18 +77,6 @@ class SerialMessenger(QtWidgets.QWidget):
         self._connect_signals()
         self._load_ports()
         self._refresh_state()
-
-        # Overall verification timeout.
-        self.baud_check_timer = QtCore.QTimer(self)
-
-        self.baud_check_timer.setSingleShot(True)
-
-        self.baud_check_timer.timeout.connect(self._baud_rate_check_timed_out)
-
-        # Periodic HELLO retry.
-        self.baud_retry_timer = QtCore.QTimer(self)
-
-        self.baud_retry_timer.timeout.connect(self._retry_baud_rate_check)
 
         self.input_area.setFocus()
 
@@ -263,16 +242,12 @@ class SerialMessenger(QtWidgets.QWidget):
 
         connection.error.connect(self._show_error)
 
-        connection.baud_rate_verified.connect(self._baud_rate_verified)
-
         LOGGER.info(
             "Connected frontend to serial port %s.",
             port_name,
         )
 
         self._port_opened()
-
-        self._start_baud_rate_check()
 
     def _change_baud_rate(self) -> None:
         """Reconnect the selected port when the baud rate changes.
@@ -294,78 +269,11 @@ class SerialMessenger(QtWidgets.QWidget):
         self._try_open()
 
     def _port_opened(self) -> None:
-        """Lock the port and keep the baud-rate selector available."""
+        """Lock the selected connection settings and enable input."""
         self.port_choice.setEnabled(False)
-
-        self.input_area.setEnabled(False)
-
-    def _start_baud_rate_check(self) -> None:
-        """Start the baud-rate handshake."""
-        if self.connection is None:
-            return
-
-        if self.connection.verification_finished:
-            return
-
-        self.baud_check_timer.start(BAUD_RATE_CHECK_TIMEOUT_MS)
-
-        self.baud_retry_timer.start(BAUD_RATE_RETRY_INTERVAL_MS)
-
-        self.connection.start_baud_rate_check()
-
-    def _retry_baud_rate_check(self) -> None:
-        """Retry HELLO while the peer is not ready."""
-        connection = self.connection
-
-        if connection is None:
-            self.baud_retry_timer.stop()
-            return
-
-        if self.baud_rate_verified or connection.verification_finished:
-            self.baud_retry_timer.stop()
-            return
-
-        LOGGER.debug(
-            "Retrying baud verification on %s.",
-            connection.port_name,
-        )
-
-        connection.start_baud_rate_check()
-
-    def _baud_rate_verified(self) -> None:
-        """Enable normal messaging after successful verification."""
-        connection = self.connection
-
-        if connection is None:
-            return
-
-        if self.baud_rate_verified:
-            return
-
-        self.baud_check_timer.stop()
-        self.baud_retry_timer.stop()
-
-        self.baud_rate_verified = True
-
+        self.baud_rate_choice.setEnabled(False)
         self.input_area.setEnabled(True)
-
         self.input_area.setFocus()
-
-    def _baud_rate_check_timed_out(self) -> None:
-        """Handle failure to verify within the allowed time."""
-        self.baud_retry_timer.stop()
-
-        if self.baud_rate_verified:
-            return
-
-        if self.connection is None:
-            return
-
-        self._show_error(
-            "Baud-rate verification timed out. "
-            "Make sure both COM ports are open and "
-            "use the same baud rate."
-        )
 
     def _send_character(
         self,
@@ -375,9 +283,6 @@ class SerialMessenger(QtWidgets.QWidget):
         connection = self.connection
 
         if connection is None:
-            return
-
-        if not self.baud_rate_verified:
             return
 
         if connection.send_character(character):
@@ -390,9 +295,6 @@ class SerialMessenger(QtWidgets.QWidget):
         text: str,
     ) -> None:
         """Append received user data to the output area."""
-        if not self.baud_rate_verified:
-            return
-
         cursor = self.output_area.textCursor()
 
         cursor.movePosition(QtGui.QTextCursor.MoveOperation.End)
@@ -458,19 +360,6 @@ class SerialMessenger(QtWidgets.QWidget):
                 message,
             )
 
-            # Stop ALL sources of new verification work first.
-            self.baud_check_timer.stop()
-            self.baud_retry_timer.stop()
-
-            # Critical ordering:
-            #
-            #   1. stop timers
-            #   2. close/reset the serial connection
-            #   3. show QMessageBox
-            #
-            # QMessageBox runs a nested Qt event loop. If the
-            # connection is left alive while it is visible, queued
-            # serial errors can create an error-dialog storm.
             self._reset_connection_controls()
 
             QtWidgets.QMessageBox.critical(
@@ -487,16 +376,11 @@ class SerialMessenger(QtWidgets.QWidget):
 
         :return: ``None``.
         """
-        self.baud_check_timer.stop()
-        self.baud_retry_timer.stop()
-
         connection = self.connection
 
         # Clear the reference FIRST so any queued error signal from the
         # old connection is ignored by _show_error().
         self.connection = None
-
-        self.baud_rate_verified = False
 
         if connection is not None:
             try:
@@ -506,11 +390,6 @@ class SerialMessenger(QtWidgets.QWidget):
 
             try:
                 connection.error.disconnect(self._show_error)
-            except TypeError:
-                pass
-
-            try:
-                connection.baud_rate_verified.disconnect(self._baud_rate_verified)
             except TypeError:
                 pass
 

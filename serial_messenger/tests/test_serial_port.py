@@ -128,42 +128,9 @@ class SerialConnectionTests(unittest.TestCase):
         port.write.return_value = len("Я".encode("utf-8"))
         connection = SerialConnection("COM10", 9600)
         connection.port = port
-        connection._handle_control_frame("ACK:9600")
 
         self.assertTrue(connection.send_character("Я"))
         port.write.assert_called_once_with("Я".encode("utf-8"))
-
-    def test_mismatched_baud_rate_emits_error(self) -> None:
-        """Ensure a peer that announces another baud rate is rejected.
-
-        :return: ``None``.
-        """
-        errors: list[str] = []
-        connection = SerialConnection("COM10", 9600)
-        connection.error.connect(errors.append)
-
-        connection._handle_control_frame("HELLO:115200")
-
-        self.assertEqual(
-            errors,
-            ["Baud rate mismatch: local 9600, remote 115200."],
-        )
-
-    def test_baud_rate_check_writes_printable_characters(self) -> None:
-        """Ensure handshake traffic uses the same character-wise path as text.
-
-        :return: ``None``.
-        """
-        port = MagicMock(is_open=True)
-        port.write.side_effect = len
-        connection = SerialConnection("COM10", 9600)
-        connection.port = port
-
-        self.assertTrue(connection.start_baud_rate_check())
-
-        written = b"".join(call.args[0] for call in port.write.call_args_list)
-        self.assertEqual(written, b"[SM1:HELLO:9600]")
-        self.assertTrue(all(32 <= byte <= 126 for byte in written))
 
 
 if __name__ == "__main__":
