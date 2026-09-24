@@ -16,11 +16,12 @@ __all__ = ("SerialMessenger",)
 LOGGER = logging.getLogger(__name__)
 
 
-# Enough time to configure the second application/window.
-BAUD_RATE_CHECK_TIMEOUT_MS: Final[int] = 7_000
+# A bounded check means each endpoint independently reports a mismatch even
+# when incompatible UART settings turn the peer's frame into unreadable data.
+BAUD_RATE_CHECK_TIMEOUT_MS: Final[int] = 4_000
 
-# Retry once per second while waiting for the other side.
-BAUD_RATE_RETRY_INTERVAL_MS: Final[int] = 1_000
+# Retry while waiting for the other application to open.
+BAUD_RATE_RETRY_INTERVAL_MS: Final[int] = 750
 
 
 class ImmediateInput(QtWidgets.QPlainTextEdit):
@@ -362,9 +363,8 @@ class SerialMessenger(QtWidgets.QWidget):
             return
 
         self._show_error(
-            "Baud-rate verification timed out. "
-            "Make sure both COM ports are open and "
-            "use the same baud rate."
+            "Baud-rate verification failed. "
+            "Open both applications and select the same baud rate."
         )
 
     def _send_character(

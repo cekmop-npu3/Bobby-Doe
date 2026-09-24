@@ -360,11 +360,9 @@ class SerialConnection(QtCore.QObject):
                 self.port_name,
             )
 
-            # Receiving a valid HELLO containing our baud rate already
-            # proves that the incoming configuration is compatible.
-            self._confirm_baud_rate()
-
-            # Try to tell the other side as well.
+            # Do not confirm yet. Each endpoint must receive an ACK for its
+            # own HELLO, so neither UI becomes usable if only one direction
+            # happened to be decoded successfully.
             self._write_control_frame(f"{CONTROL_ACK}:{self.baud_rate}")
 
             return
@@ -447,14 +445,18 @@ class SerialConnection(QtCore.QObject):
         frame = f"{CONTROL_FRAME_START}{payload}{CONTROL_FRAME_END}"
 
         try:
-            for character in frame:
-                encoded = character.encode("utf-8")
-                if self.port.write(encoded) != len(encoded):
-                    LOGGER.debug(
-                        "Partial control-frame write on %s.",
-                        self.port_name,
-                    )
-                    return False
+            encoded = frame.encode("ascii")
+
+            # A control frame is protocol metadata, not user data. One write
+            # avoids a system call per byte while UART still transmits the
+            # bytes serially. User-entered text remains one write per
+            # character as required by variant 1.
+            if self.port.write(encoded) != len(encoded):
+                LOGGER.debug(
+                    "Partial control-frame write on %s.",
+                    self.port_name,
+                )
+                return False
 
             LOGGER.debug(
                 "Sent control frame %r through %s.",

@@ -149,8 +149,23 @@ class SerialConnectionTests(unittest.TestCase):
             ["Baud rate mismatch: local 9600, remote 115200."],
         )
 
+    def test_hello_requires_ack_before_verification(self) -> None:
+        """Ensure a matching HELLO alone does not enable user data.
+
+        :return: ``None``.
+        """
+        port = MagicMock(is_open=True)
+        port.write.return_value = len(b"[SM1:ACK:9600]")
+        connection = SerialConnection("COM10", 9600)
+        connection.port = port
+
+        connection._handle_control_frame("HELLO:9600")
+
+        self.assertFalse(connection.verification_finished)
+        port.write.assert_called_once_with(b"[SM1:ACK:9600]")
+
     def test_baud_rate_check_writes_printable_characters(self) -> None:
-        """Ensure handshake traffic uses the same character-wise path as text.
+        """Ensure handshake traffic uses a printable protocol frame.
 
         :return: ``None``.
         """
