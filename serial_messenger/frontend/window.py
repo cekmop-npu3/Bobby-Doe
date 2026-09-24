@@ -269,9 +269,8 @@ class SerialMessenger(QtWidgets.QWidget):
         self._try_open()
 
     def _port_opened(self) -> None:
-        """Lock the selected connection settings and enable input."""
+        """Lock the port but allow changing baud rate and enable input."""
         self.port_choice.setEnabled(False)
-        self.baud_rate_choice.setEnabled(False)
         self.input_area.setEnabled(True)
         self.input_area.setFocus()
 
